@@ -7,7 +7,7 @@ import java.net.Socket
 import kotlin.concurrent.thread
 import org.json.JSONObject
 
-data class User(val id: Int, val name: String)
+data class User(val id: Int, var name: String)
 
 data class HandlerSpec(val method: Regex, val path: Regex, val handler: (String, Map<String, String>, InputStream, PrintWriter) -> Unit)
 
@@ -80,6 +80,21 @@ fun handleAddUser(path: String, headers: Map<String, String>, input: InputStream
     output.println("{\"id\": $id, \"name\": \"$name\"}")
 }
 
+fun handleEditUser(path: String, headers: Map<String, String>, input: InputStream, output: PrintWriter) {
+    val requestBody = body.trim()
+    val json = JSONObject(requestBody)
+
+    val id = json.getInt("id")
+    val name = json.getString("name")
+
+    editUserById(id, name)
+
+    output.println("HTTP/1.1 200 OK")
+    output.println("Content-Type: application/json; charset=utf-8")
+    output.println()
+    output.println("{\"id\": $id, \"name\": \"$name\"}")
+}
+
 fun server(socket: Socket) {
     val client: Socket = socket
 
@@ -102,7 +117,7 @@ fun server(socket: Socket) {
         HandlerSpec("DELETE".toRegex(), "/api/users/\\d+".toRegex(),  ::handleDeleteUserById),
         HandlerSpec("GET".toRegex(), "/api/users/".toRegex(),  ::handleGetAllUsers),
         HandlerSpec("POST".toRegex(), "/api/users/".toRegex(),  ::handleAddUser),
-        HandlerSpec("PUT".toRegex(), "/api/users/".toRegex(),  ::handleEditUser)
+        HandlerSpec("PUT".toRegex(), "/api/users/".toRegex(),  ::handleEditUser),
     )
 
     val headers = mutableMapOf<String, String>()
@@ -119,7 +134,7 @@ fun server(socket: Socket) {
 
     for ((methodRegex, pathRegex, handler) in handlers)
         if (method.matches(methodRegex) && path.matches(pathRegex)) {
-            if (method == "POST") {
+            if (method == "POST" || method == "PUT") {
                 val contentLength = headers.entries.last()
                 val contentLengthValue = contentLength.value.trim().toInt()
                 println(contentLengthValue)
@@ -151,7 +166,18 @@ fun findUserById(id: Int): User? {
 }
 
 fun addUserById(id: Int, name: String) {
-    users.add(User(id, name))
+    if (users.any { it.id == id }) {
+        println("NOOOOOOOOOOO!!!!!")
+    } else {
+        users.add(User(id, name))
+    }
+}
+
+fun editUserById(id: Int, newName: String) {
+    val user = users.find { it.id == id }
+    if (user != null) {
+        user.name = newName
+    }
 }
 
 fun deleteUserById(id: Int): User? {
