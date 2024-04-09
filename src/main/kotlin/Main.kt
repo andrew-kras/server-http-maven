@@ -44,7 +44,7 @@ fun handleGetAllUsers(path: String, headers: Map<String, String>, input: InputSt
 }
 
 fun handleGetUserById(path: String, headers: Map<String, String>, input: InputStream, output: PrintWriter) {
-    val id = checkNotNull(extractId(path))
+    val id = checkNotNull(userExtractId(path))
 
     val user = checkNotNull(findUserById(id))
 
@@ -55,7 +55,7 @@ fun handleGetUserById(path: String, headers: Map<String, String>, input: InputSt
 }
 
 fun handleDeleteUserById(path: String, headers: Map<String, String>, input: InputStream, output: PrintWriter) {
-    val id = checkNotNull(extractId(path))
+    val id = checkNotNull(userExtractId(path))
 
     val user = checkNotNull(deleteUserById(id))
 
@@ -69,22 +69,22 @@ fun handleAddUser(path: String, headers: Map<String, String>, input: InputStream
     val requestBody = body.trim()
     val json = JSONObject(requestBody)
 
-    val id = json.getInt("id")
     val name = json.getString("name")
 
-    addUserById(id, name)
+    addUserById(name)
 
     output.println("HTTP/1.1 201 Created")
     output.println("Content-Type: application/json; charset=utf-8")
     output.println()
-    output.println("{\"id\": $id, \"name\": \"$name\"}")
+    output.println("{\"name\": \"$name\"}")
 }
 
 fun handleEditUser(path: String, headers: Map<String, String>, input: InputStream, output: PrintWriter) {
+    val id = checkNotNull(userExtractId(path))
+
     val requestBody = body.trim()
     val json = JSONObject(requestBody)
 
-    val id = json.getInt("id")
     val name = json.getString("name")
 
     editUserById(id, name)
@@ -117,7 +117,7 @@ fun server(socket: Socket) {
         HandlerSpec("DELETE".toRegex(), "/api/users/\\d+".toRegex(),  ::handleDeleteUserById),
         HandlerSpec("GET".toRegex(), "/api/users/".toRegex(),  ::handleGetAllUsers),
         HandlerSpec("POST".toRegex(), "/api/users/".toRegex(),  ::handleAddUser),
-        HandlerSpec("PUT".toRegex(), "/api/users/".toRegex(),  ::handleEditUser),
+        HandlerSpec("PUT".toRegex(), "/api/users/\\d+".toRegex(),  ::handleEditUser),
     )
 
     val headers = mutableMapOf<String, String>()
@@ -165,11 +165,12 @@ fun findUserById(id: Int): User? {
     return users.find { user -> user.id == id }
 }
 
-fun addUserById(id: Int, name: String) {
-    if (users.any { it.id == id }) {
+fun addUserById(name: String) {
+    val nextId = users.last().id + 1
+    if (users.any { it.id == nextId }) {
         println("NOOOOOOOOOOO!!!!!")
     } else {
-        users.add(User(id, name))
+        users.add(User(nextId, name))
     }
 }
 
@@ -186,7 +187,7 @@ fun deleteUserById(id: Int): User? {
     return user
 }
 
-fun extractId(path: String): Int? {
+fun userExtractId(path: String): Int? {
     val regex = Regex("/api/users/(\\d+)")
     val matchResult = regex.matchEntire(path)
     return if (matchResult != null) matchResult.groupValues[1].toIntOrNull() else null
