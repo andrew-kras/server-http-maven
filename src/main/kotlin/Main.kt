@@ -30,6 +30,11 @@ fun main(args: Array<String>) {
 }
 
 fun handleGetAllUsers(body: String, path: String, headers: Map<String, String>, input: InputStream, output: PrintWriter) {
+    if (users.isEmpty()) {
+        sendErrorResponse(output, 404, "Not Found: No users found")
+        return
+    }
+
     output.println("HTTP/1.1 200 OK")
     output.println("Content-Type: application/json; charset=utf-8")
     output.println()
@@ -42,9 +47,19 @@ fun handleGetAllUsers(body: String, path: String, headers: Map<String, String>, 
 }
 
 fun handleGetUserById(body: String, path: String, headers: Map<String, String>, input: InputStream, output: PrintWriter) {
-    val id = checkNotNull(userExtractId(path))
+    val id = userExtractId(path)
 
-    val user = checkNotNull(findUserById(id))
+    if (id == null) {
+        sendErrorResponse(output, 400, "Bad Request: Invalid User ID")
+        return
+    }
+
+    val user = findUserById(id)
+
+    if (user == null) {
+        sendErrorResponse(output, 404, "Not Found: User with ID $id not found")
+        return
+    }
 
     output.println("HTTP/1.1 200 OK")
     output.println("Content-Type: application/json; charset=utf-8")
@@ -53,9 +68,19 @@ fun handleGetUserById(body: String, path: String, headers: Map<String, String>, 
 }
 
 fun handleDeleteUserById(body: String, path: String, headers: Map<String, String>, input: InputStream, output: PrintWriter) {
-    val id = checkNotNull(userExtractId(path))
+    val id = userExtractId(path)
 
-    val user = checkNotNull(deleteUserById(id))
+    if (id == null) {
+        sendErrorResponse(output, 400, "Bad Request: Invalid User ID")
+        return
+    }
+
+    val user = deleteUserById(id)
+
+    if (user == null) {
+        sendErrorResponse(output, 404, "Not Found: User with ID $id not found")
+        return
+    }
 
     output.println("HTTP/1.1 200 OK")
     output.println("Content-Type: application/json; charset=utf-8")
@@ -65,98 +90,131 @@ fun handleDeleteUserById(body: String, path: String, headers: Map<String, String
 
 fun handleAddUser(body: String, path: String, headers: Map<String, String>, input: InputStream, output: PrintWriter) {
     val requestBody = body.trim()
-    val json = JSONObject(requestBody)
+    if (requestBody.isEmpty()) {
+        sendErrorResponse(output, 400, "Bad Request: Request body is empty")
+        return
+    }
 
-    val name = json.getString("name")
+    try {
+        val json = JSONObject(requestBody)
+        val name = json.optString("name")
+        if (name.isEmpty()) {
+            sendErrorResponse(output, 400, "Bad Request: User name is missing")
+            return
+        }
 
-    addUserById(name)
+        addUserById(name)
 
-    output.println("HTTP/1.1 201 Created")
-    output.println("Content-Type: application/json; charset=utf-8")
-    output.println()
-    output.println("{\"name\": \"$name\"}")
+        output.println("HTTP/1.1 201 Created")
+        output.println("Content-Type: application/json; charset=utf-8")
+        output.println()
+        output.println("{\"name\": \"$name\"}")
+    } catch (e: Exception) {
+        sendErrorResponse(output, 500, "Internal Server Error: Failed to add user")
+    }
 }
 
 fun handleEditUser(body: String, path: String, headers: Map<String, String>, input: InputStream, output: PrintWriter) {
-    val id = checkNotNull(userExtractId(path))
+    val id = userExtractId(path)
+
+    if (id == null) {
+        sendErrorResponse(output, 400, "Bad Request: Invalid User ID")
+        return
+    }
 
     val requestBody = body.trim()
-    val json = JSONObject(requestBody)
+    if (requestBody.isEmpty()) {
+        sendErrorResponse(output, 400, "Bad Request: Request body is empty")
+        return
+    }
 
-    val name = json.getString("name")
+    try {
+        val json = JSONObject(requestBody)
+        val name = json.optString("name")
+        if (name.isEmpty()) {
+            sendErrorResponse(output, 400, "Bad Request: User name is missing")
+            return
+        }
 
-    editUserById(id, name)
+        editUserById(id, name)
 
-    output.println("HTTP/1.1 200 OK")
-    output.println("Content-Type: application/json; charset=utf-8")
-    output.println()
-    output.println("{\"id\": $id, \"name\": \"$name\"}")
+        output.println("HTTP/1.1 200 OK")
+        output.println("Content-Type: application/json; charset=utf-8")
+        output.println()
+        output.println("{\"id\": $id, \"name\": \"$name\"}")
+    } catch (e: Exception) {
+        sendErrorResponse(output, 500, "Internal Server Error: Failed to edit user")
+    }
 }
 
 fun server(socket: Socket) {
     val client: Socket = socket
 
-    val output = PrintWriter(client.getOutputStream(), true)
-    val inputStream = client.inputStream
+    try {
+        val output = PrintWriter(client.getOutputStream(), true)
+        val inputStream = client.inputStream
 
-    val input = BufferedReader(InputStreamReader(inputStream))
+        val input = BufferedReader(InputStreamReader(inputStream))
 
-    val requestLine = input.readLine() ?: return
+        val requestLine = input.readLine() ?: return
 
-    val request = requestLine.split(" ")
-    val method = request[0]
-    val path = request[1]
+        val request = requestLine.split(" ")
+        val method = request[0]
+        val path = request[1]
 
-    val handlers = listOf(
-        HandlerSpec("GET".toRegex(), "/api/users/\\d+".toRegex(),  ::handleGetUserById),
-        HandlerSpec("DELETE".toRegex(), "/api/users/\\d+".toRegex(),  ::handleDeleteUserById),
-        HandlerSpec("GET".toRegex(), "/api/users/".toRegex(),  ::handleGetAllUsers),
-        HandlerSpec("POST".toRegex(), "/api/users/".toRegex(),  ::handleAddUser),
-        HandlerSpec("PUT".toRegex(), "/api/users/\\d+".toRegex(),  ::handleEditUser),
-    )
+        val handlers = listOf(
+            HandlerSpec("GET".toRegex(), "/api/users/\\d+".toRegex(),  ::handleGetUserById),
+            HandlerSpec("DELETE".toRegex(), "/api/users/\\d+".toRegex(),  ::handleDeleteUserById),
+            HandlerSpec("GET".toRegex(), "/api/users/".toRegex(),  ::handleGetAllUsers),
+            HandlerSpec("POST".toRegex(), "/api/users/".toRegex(),  ::handleAddUser),
+            HandlerSpec("PUT".toRegex(), "/api/users/\\d+".toRegex(),  ::handleEditUser),
+        )
 
-    val headers = mutableMapOf<String, String>()
+        val headers = mutableMapOf<String, String>()
 
-    var header: String? = input.readLine()
+        var header: String? = input.readLine()
 
-    while (!header.isNullOrEmpty()) {
-        val headerParts = header.split(":")
-        val key = headerParts[0]
-        val value = headerParts[1]
-        headers[key] = value
-        header = input.readLine().lowercase()
-    }
-
-    for ((methodRegex, pathRegex, handler) in handlers)
-        if (method.matches(methodRegex) && path.matches(pathRegex)) {
-            if ("content-length" in headers) {
-                val contentLength = headers["content-length"]
-                val contentLengthValue = contentLength!!.trim().toInt()
-                println(contentLengthValue)
-
-                val byteArray = ByteArray(contentLengthValue)
-
-                for (i in byteArray.indices)
-                    byteArray[i] = input.read().toByte()
-
-                val requestBody = byteArray.toString(Charsets.UTF_8)
-
-                handler(requestBody, path, headers, inputStream, output)
-            } else {
-                val requestBody = ""
-
-                handler(requestBody, path, headers, inputStream, output)
-            }
-            client.close()
-
-            return
+        while (!header.isNullOrEmpty()) {
+            val headerParts = header.split(":")
+            val key = headerParts[0]
+            val value = headerParts[1]
+            headers[key] = value
+            header = input.readLine().lowercase()
         }
 
-//    output.println("""
-//        HTTP/1.1 404 Not Found
-//    """.trimIndent())
+        for ((methodRegex, pathRegex, handler) in handlers)
+            if (method.matches(methodRegex) && path.matches(pathRegex)) {
+                if ("content-length" in headers) {
+                    val contentLength = headers["content-length"]
+                    val contentLengthValue = contentLength!!.trim().toInt()
+                    println(contentLengthValue)
 
-    client.close()
+                    val byteArray = ByteArray(contentLengthValue)
+
+                    for (i in byteArray.indices)
+                        byteArray[i] = input.read().toByte()
+
+                    val requestBody = byteArray.toString(Charsets.UTF_8)
+
+                    handler(requestBody, path, headers, inputStream, output)
+                } else {
+                    val requestBody = ""
+
+                    handler(requestBody, path, headers, inputStream, output)
+                }
+                client.close()
+
+                return
+            }
+
+        sendErrorResponse(output, 404, "Not Found")
+
+    } catch (e: IllegalStateException) {
+        val output = PrintWriter(client.getOutputStream(), true)
+        sendErrorResponse(output, 500, "Internal Server Error")
+    } finally {
+        client.close()
+    }
 }
 
 fun findUserById(id: Int): User? {
@@ -189,4 +247,11 @@ fun userExtractId(path: String): Int? {
     val regex = Regex("/api/users/(\\d+)")
     val matchResult = regex.matchEntire(path)
     return if (matchResult != null) matchResult.groupValues[1].toIntOrNull() else null
+}
+
+fun sendErrorResponse(output: PrintWriter, statusCode: Int, message: String) {
+    output.println("HTTP/1.1 $statusCode")
+    output.println("Content-Type: text/plain; charset=utf-8")
+    output.println()
+    output.println(message)
 }
