@@ -9,7 +9,7 @@ import org.json.JSONObject
 
 data class User(val id: Int, var name: String)
 
-data class HandlerSpec(val method: Regex, val path: Regex, val handler: (String, Map<String, String>, InputStream, PrintWriter) -> Unit)
+data class HandlerSpec(val method: Regex, val path: Regex, val handler: (String, String, Map<String, String>, InputStream, PrintWriter) -> Unit)
 
 val users = mutableListOf(
     User(1, "John"),
@@ -17,8 +17,6 @@ val users = mutableListOf(
     User(3, "Bob"),
     User(4, "Emily")
 )
-
-var body: String = ""
 
 fun main(args: Array<String>) {
     val server = ServerSocket(4444)
@@ -31,7 +29,7 @@ fun main(args: Array<String>) {
     }
 }
 
-fun handleGetAllUsers(path: String, headers: Map<String, String>, input: InputStream, output: PrintWriter) {
+fun handleGetAllUsers(body: String, path: String, headers: Map<String, String>, input: InputStream, output: PrintWriter) {
     output.println("HTTP/1.1 200 OK")
     output.println("Content-Type: application/json; charset=utf-8")
     output.println()
@@ -43,7 +41,7 @@ fun handleGetAllUsers(path: String, headers: Map<String, String>, input: InputSt
     }
 }
 
-fun handleGetUserById(path: String, headers: Map<String, String>, input: InputStream, output: PrintWriter) {
+fun handleGetUserById(body: String, path: String, headers: Map<String, String>, input: InputStream, output: PrintWriter) {
     val id = checkNotNull(userExtractId(path))
 
     val user = checkNotNull(findUserById(id))
@@ -54,7 +52,7 @@ fun handleGetUserById(path: String, headers: Map<String, String>, input: InputSt
     output.println("{\"id\": ${user.id}, \"name\": \"${user.name}\"}")
 }
 
-fun handleDeleteUserById(path: String, headers: Map<String, String>, input: InputStream, output: PrintWriter) {
+fun handleDeleteUserById(body: String, path: String, headers: Map<String, String>, input: InputStream, output: PrintWriter) {
     val id = checkNotNull(userExtractId(path))
 
     val user = checkNotNull(deleteUserById(id))
@@ -65,7 +63,7 @@ fun handleDeleteUserById(path: String, headers: Map<String, String>, input: Inpu
     output.println("{\"id\": ${user.id}, \"name\": \"${user.name}\"}")
 }
 
-fun handleAddUser(path: String, headers: Map<String, String>, input: InputStream, output: PrintWriter) {
+fun handleAddUser(body: String, path: String, headers: Map<String, String>, input: InputStream, output: PrintWriter) {
     val requestBody = body.trim()
     val json = JSONObject(requestBody)
 
@@ -79,7 +77,7 @@ fun handleAddUser(path: String, headers: Map<String, String>, input: InputStream
     output.println("{\"name\": \"$name\"}")
 }
 
-fun handleEditUser(path: String, headers: Map<String, String>, input: InputStream, output: PrintWriter) {
+fun handleEditUser(body: String, path: String, headers: Map<String, String>, input: InputStream, output: PrintWriter) {
     val id = checkNotNull(userExtractId(path))
 
     val requestBody = body.trim()
@@ -104,9 +102,6 @@ fun server(socket: Socket) {
     val input = BufferedReader(InputStreamReader(inputStream))
 
     val requestLine = input.readLine() ?: return
-//    println(requestLine)
-//    val requestLines = input.readLines()
-//    println(requestLines)
 
     val request = requestLine.split(" ")
     val method = request[0]
@@ -129,14 +124,14 @@ fun server(socket: Socket) {
         val key = headerParts[0]
         val value = headerParts[1]
         headers[key] = value
-        header = input.readLine()
+        header = input.readLine().lowercase()
     }
 
     for ((methodRegex, pathRegex, handler) in handlers)
         if (method.matches(methodRegex) && path.matches(pathRegex)) {
-            if (method == "POST" || method == "PUT") {
-                val contentLength = headers.entries.last()
-                val contentLengthValue = contentLength.value.trim().toInt()
+            if ("content-length" in headers) {
+                val contentLength = headers["content-length"]
+                val contentLengthValue = contentLength!!.trim().toInt()
                 println(contentLengthValue)
 
                 val byteArray = ByteArray(contentLengthValue)
@@ -144,9 +139,14 @@ fun server(socket: Socket) {
                 for (i in byteArray.indices)
                     byteArray[i] = input.read().toByte()
 
-                body = byteArray.toString(Charsets.UTF_8)
+                val requestBody = byteArray.toString(Charsets.UTF_8)
+
+                handler(requestBody, path, headers, inputStream, output)
+            } else {
+                val requestBody = ""
+
+                handler(requestBody, path, headers, inputStream, output)
             }
-            handler(path, headers, inputStream, output)
             client.close()
 
             return
@@ -155,8 +155,6 @@ fun server(socket: Socket) {
 //    output.println("""
 //        HTTP/1.1 404 Not Found
 //    """.trimIndent())
-
-//    println(users)
 
     client.close()
 }
