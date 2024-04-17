@@ -22,6 +22,9 @@ fun main(args: Array<String>) {
     val server = ServerSocket(4444)
 
 
+    println(JSONObject.valueToString(mapOf(
+        "a" to mapOf("b" to 1)
+    )))
     while (true) {
         val socket = server.accept()
 
@@ -35,15 +38,18 @@ fun handleGetAllUsers(body: String, path: String, headers: Map<String, String>, 
         return
     }
 
+    extracted(output, mapOf(
+        "users" to users.map { user ->
+            mapOf("id" to user.id, "name" to user.name)
+        }
+    ))
+}
+
+fun extracted(output: PrintWriter, response: Map<String, Any >) {
     output.println("HTTP/1.1 200 OK")
     output.println("Content-Type: application/json; charset=utf-8")
     output.println()
-    for ((index, user) in users.withIndex()) {
-        if (index != 0) {
-            output.println(",")
-        }
-        output.println("  {\"id\": ${user.id}, \"name\": \"${user.name}\"}")
-    }
+    output.println(JSONObject.valueToString(response))
 }
 
 fun handleGetUserById(body: String, path: String, headers: Map<String, String>, input: InputStream, output: PrintWriter) {
@@ -175,11 +181,11 @@ fun server(socket: Socket) {
         var header: String? = input.readLine()
 
         while (!header.isNullOrEmpty()) {
-            val headerParts = header.split(":")
-            val key = headerParts[0]
-            val value = headerParts[1]
+            val headerParts = header.split(":", limit=2)
+            val key = headerParts[0].lowercase().trim()
+            val value = headerParts[1].trim()
             headers[key] = value
-            header = input.readLine().lowercase()
+            header = input.readLine()
         }
 
         for ((methodRegex, pathRegex, handler) in handlers)
